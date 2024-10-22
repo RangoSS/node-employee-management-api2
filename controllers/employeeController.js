@@ -175,20 +175,24 @@ const deleteEmployee = async (req, res) => {
     }
 };
 
-// Get all employees
-const getAllEmployees = async (req, res) => {
+const getAllEmployeesCount = async (req, res) => {
+    console.log("GET /employees/count endpoint was hit");
+
     try {
-        await ensureEmployeesCollectionExists(); // Ensure collection exists
-        const snapshot = await db.collection('employees').get();
-        const employees = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-        }));
-        res.status(200).json(employees);
+        const employeesSnapshot = await db.collection('employees').get();
+        const employeeCount = employeesSnapshot.size; // Get the count of documents
+
+        console.log("Number of employees found:", employeeCount); // Log the count
+
+        // Respond with the count of employees
+        res.status(200).json({ count: employeeCount });
     } catch (error) {
-        console.error('Error fetching employees:', error);
-        res.status(500).json({ message: 'Error fetching employees' });
+        console.error("Error fetching employees count:", error); // Log the error
+        res.status(500).json({ message: 'Error fetching employees count', details: error.message });
     }
 };
 
-module.exports = { postEmployee, updateEmployee, deleteEmployee, getAllEmployees };
+
+
+
+module.exports = { postEmployee, updateEmployee, deleteEmployee, getAllEmployeesCount };
