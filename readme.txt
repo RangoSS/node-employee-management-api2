@@ -1,5 +1,6 @@
 http://localhost:5000/api/employees
 
+http://localhost:3001/api/employees/count
 
 
 //to upload image use form-data in postman

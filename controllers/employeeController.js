@@ -176,7 +176,7 @@ const deleteEmployee = async (req, res) => {
 };
 
 const getAllEmployeesCount = async (req, res) => {
-    console.log("GET /employees/count endpoint was hit");
+    console.log("GET /employees/count endpoint was hit ,am counting danies");
 
     try {
         const employeesSnapshot = await db.collection('employees').get();
@@ -192,7 +192,37 @@ const getAllEmployeesCount = async (req, res) => {
     }
 };
 
+// GET - Retrieve all employees
+const getAllEmployeesData = async (req, res) => {
+    try {
+        // Fetch the snapshot of the 'employees' collection from Firestore
+        const employeesSnapshot = await db.collection('employees').get();
+        
+        console.log("Snapshot size:", employeesSnapshot.size);  // Log the size of the snapshot (optional)
+        
+        const employees = employeesSnapshot.docs.map(doc => {
+            const data = doc.data();
+            console.log("Employee data:", data);  // Log each employee's data
+            return {
+                id: doc.id,
+                ...data,  // Spread the employee document data
+            };
+        });
+
+        // If no employees are found, return a 404 response
+        if (employees.length === 0) {
+            return res.status(404).json({ message: "No employees found" });
+        }
+
+        // Respond with the list of employees
+        res.status(200).json(employees);
+    } catch (error) {
+        console.error("Error fetching employees:", error);  // Log any errors that occur
+        res.status(500).json({ message: 'Error fetching employees', details: error.message });
+    }
+};
 
 
 
-module.exports = { postEmployee, updateEmployee, deleteEmployee, getAllEmployeesCount };
+
+module.exports = { postEmployee, updateEmployee, deleteEmployee, getAllEmployeesCount , getAllEmployeesData  };
