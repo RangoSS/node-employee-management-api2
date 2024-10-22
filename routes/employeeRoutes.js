@@ -20,9 +20,9 @@ router.get('/employees', getAllEmployeesData);
 router.get('/employees/count', getAllEmployeesCount);
 
 // PUT endpoint to update an employee
-router.put('/employees/:id', upload.single('photo'), updateEmployee);
+router.put('/employees/:employeeId', upload.single('photo'), updateEmployee);
 
 // DELETE endpoint to delete an employee by ID
-router.delete('/employees/:id', deleteEmployee);
+router.delete('/employees/:employeeId', deleteEmployee);
 
 module.exports = router;

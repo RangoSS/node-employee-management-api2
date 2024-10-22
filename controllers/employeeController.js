@@ -82,98 +82,136 @@ const postEmployee = async (req, res) => {
 
 // UPDATE employee details
 const updateEmployee = async (req, res) => {
-    const { id } = req.params; // Get employee ID from request parameters
-    const { name, surname, age, idNumber, role } = req.body;
-    const photo = req.file; // Check if a new photo is uploaded
-
     try {
-        await ensureEmployeesCollectionExists(); // Ensure collection exists
-        // Reference to the specific employee document
-        const employeeRef = db.collection('employees').doc(id);
+        const { employeeId } = req.params; // Employee ID is expected as a URL parameter
+        const { name, surname, age, idNumber, role } = req.body;
+        let photoUrl = null;
 
-        // Check if the employee exists
+        // Get the current employee document
+        const employeeRef = db.collection('employees').doc(employeeId);
         const employeeDoc = await employeeRef.get();
+
         if (!employeeDoc.exists) {
-            return res.status(404).json({ message: 'Employee not found' });
+            return res.status(404).send({ error: 'Employee not found' });
         }
 
-        const updatedData = {
-            name,
-            surname,
-            age,
-            idNumber,
-            role,
-        };
+        const employeeData = employeeDoc.data();
 
-        if (photo) {
-            // If a new photo is uploaded, update it in Firebase Storage
-            const filePath = `employees/${id}/${photo.originalname}`;
-            const bucket = admin.storage().bucket();
-            const file = bucket.file(filePath);
-            await file.save(photo.buffer, {
-                metadata: {
-                    contentType: photo.mimetype,
-                },
-                resumable: false, // Prevents the file from being uploaded in resumable mode
+        // Check if there's a new photo being uploaded
+        if (req.file) {
+            // Delete the old photo if it exists
+            if (employeeData.photoUrl) {
+                const oldFileName = employeeData.photoUrl.split('/').pop(); // Extract the filename
+                const oldFile = bucket.file(`employees/${oldFileName}`);
+                await oldFile.delete(); // Delete the old photo from storage
+            }
+
+            // Generate a unique filename for the new uploaded photo
+            const fileName = `employees/${uuidv4()}_${req.file.originalname}`;
+            const blob = bucket.file(fileName);
+            const blobStream = blob.createWriteStream();
+
+            blobStream.on('finish', async () => {
+                // Generate a signed URL for the new photo
+                const [signedUrl] = await blob.getSignedUrl({
+                    action: 'read',
+                    expires: '03-01-2500', // Adjust expiration date as needed
+                });
+
+                photoUrl = signedUrl; // Update photoUrl with the new signed URL
+
+                // Update employee data in Firestore
+                await employeeRef.update({
+                    name,
+                    surname,
+                    age,
+                    idNumber,
+                    role,
+                    photoUrl
+                });
+
+                // Respond with the updated employee data
+                res.status(200).send({
+                    message: 'Employee updated successfully',
+                    employee: {
+                        name,
+                        surname,
+                        age,
+                        idNumber,
+                        role,
+                        photoUrl
+                    }
+                });
             });
 
-            // Generate a public URL for the new photo
-            const photoUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
-            updatedData.photo = photoUrl; // Add the photo URL to updated data
+            blobStream.on('error', (err) => {
+                console.error('File upload error:', err);
+                res.status(500).send({ error: 'Failed to upload new photo', details: err.message });
+            });
+
+            blobStream.end(req.file.buffer); // Upload the new file buffer
+        } else {
+            // Update employee data without changing the photo
+            await employeeRef.update({
+                name,
+                surname,
+                age,
+                idNumber,
+                role
+            });
+
+            res.status(200).send({
+                message: 'Employee updated successfully without changing the photo',
+                employee: {
+                    name,
+                    surname,
+                    age,
+                    idNumber,
+                    role,
+                    photoUrl: employeeData.photoUrl // Return the existing photo URL
+                }
+            });
         }
-
-        // Update employee details in Firestore
-        await employeeRef.update(updatedData);
-
-        res.status(200).json({ message: 'Employee updated successfully' });
     } catch (error) {
         console.error('Error updating employee:', error);
-        res.status(500).json({ error: 'Error updating employee' });
+        res.status(500).send({ error: 'Failed to update employee', details: error.message });
     }
 };
 
 // DELETE employee by ID
 const deleteEmployee = async (req, res) => {
-    console.log("DELETE request received"); // Check if the route is hit
-
-    const { id } = req.params; // Get employee ID from request parameters
-    console.log("Employee ID:", id); // Log the ID to verify it is being received
-
     try {
-        await ensureEmployeesCollectionExists(); // Ensure collection exists
-        // Reference to the specific employee document
-        const employeeRef = db.collection('employees').doc(id);
+        const { employeeId } = req.params; // Assuming employeeId is passed as a URL parameter
 
-        // Check if the employee exists
+        // Fetch the employee document to get the photo URL
+        const employeeRef = db.collection('employees').doc(employeeId);
         const employeeDoc = await employeeRef.get();
+
         if (!employeeDoc.exists) {
-            console.log("Employee not found with ID:", id);
-            return res.status(404).json({ message: 'Employee not found' });
+            return res.status(404).send({ error: 'Employee not found' });
         }
 
-        console.log("Employee exists, deleting now...");
+        const employeeData = employeeDoc.data();
+        const photoUrl = employeeData.photoUrl;
 
-        // Delete the employee from Firestore
+        // If there is a photo URL, delete the photo from Firebase Storage
+        if (photoUrl) {
+            const fileName = photoUrl.split('/').pop(); // Extract the filename from the URL
+            const file = bucket.file(`employees/${fileName}`);
+
+            await file.delete(); // Delete the file from storage
+        }
+
+        // Delete the employee document from Firestore
         await employeeRef.delete();
 
-        // Optional: If the employee had a photo, you can also delete it from Firebase Storage
-        const photoUrl = employeeDoc.data().photo;
-        if (photoUrl) {
-            console.log("Employee has a photo, deleting from storage...");
-            const bucket = admin.storage().bucket();
-            const filePath = photoUrl.replace(`https://storage.googleapis.com/${bucket.name}/`, ''); // Extract the file path
-            const file = bucket.file(filePath);
-            await file.delete(); // Delete the file from Firebase Storage
-            console.log("Photo deleted successfully");
-        }
-
-        console.log("Employee deleted successfully");
-        res.status(200).json({ message: 'Employee deleted successfully' });
+        res.status(200).send({ message: 'Employee deleted successfully' });
     } catch (error) {
         console.error('Error deleting employee:', error);
-        res.status(500).json({ error: 'Error deleting employee' });
+        res.status(500).send({ error: 'Failed to delete employee', details: error.message });
     }
 };
+
 
 const getAllEmployeesCount = async (req, res) => {
     console.log("GET /employees/count endpoint was hit ,am counting danies");
